@@ -180,17 +180,20 @@ def main(params: dict) -> str:
     if girder_count == 1:
         girder_ys = [deck_width/2.0]
 
+    # Put the first girder at one side, leaving half girder width as edge offset
     else:
-        #evenly spaced across the deck width
-        #girder edge margin = 0.6m, the distance away from both sides of the deck,
-        margin = 0.6 
-        usable = deck_width - 2 * margin
-        girder_ys = [
-            margin + i * (usable / (girder_count - 1))
-            for i in range(girder_count)
-        ]
+        first_y= girder_width / 2.0
 
-    for i, gy in enumerate(girder_ys, start = 1):
+    # Add girders using the user-provided spacing
+    current_y = first_y
+
+    # Keep append girder y position as long as girder position is still inside the bridge
+    while current_y <= deck_width - girder_width / 2.0 + 1e-9:
+        girder_ys.append(current_y)
+        current_y += girder_spacing
+    
+    # Create girders using the y position list
+    for i, gy in enumerate(girder_ys, start=1):
         make_girder(f"Girder_{i}", gy)
 
 
