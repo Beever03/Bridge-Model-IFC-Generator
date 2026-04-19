@@ -3,45 +3,49 @@ from ifcopenshell.api import run
 
 def main(params: dict) -> str:
     #1).BASIC PARAMETERS
+    # Bridge name input, use default if not provided
     BRIDGE_NAME = str(params.get("bridge_name", "MyBridge"))
+    # Save the file in .ifc format using the name provided
     OUT_PATH = BRIDGE_NAME if BRIDGE_NAME.lower().endswith(".ifc") else BRIDGE_NAME + ".ifc"
 
-    #deck parameters input, use default if not provided
+    # Deck parameters input, use default if not provided
     deck_length = float(params.get("deck_length", 40))
     deck_width = float(params.get("deck_width", 6))
     deck_thickness = float(params.get("deck_thickness", 0.8))
     deck_height_above_ground = float(params.get("deck_height_above_ground", 5)) #elevation off ground
 
-    #Pier parameters input, use default if not provided
+    # Pier parameters input, use default if not provided
     pier_width = float(params.get("pier_width", 2))
     pier_depth = float(params.get("pier_depth", 2))
     pier_height = deck_height_above_ground  #Assuming pier supports the deck directly
-    pier_y = deck_width/2.0
+    pier_y = deck_width/2.0 #Place pier in the middle of the deck width
 
-    #Pier locations along the deck
-    pier_spacing = float(params.get("pier_spacing",10))
+    # Pier locations along the deck
+    pier_count = int(params.get("pier_count", 3))
     pier_edge_clear = float(params.get("pier_edge_clear", 5)) #5 meters off from the edge
 
-    #Girder parameters input, use default if not provided
-    girder_width = float(params.get("girder_width",0.35))
+    # Girder parameters input, use default if not provided
+    girder_width = float(params.get("girder_width", 0.35))
     girder_depth = float(params.get("girder_depth", 1.5))
-    girder_spacing = float(params.get("girder_spacing", 1.0))
+    girder_count = int(params.get("girder_count", 5))
 
-    girder_combo = girder_width + girder_spacing
-    girder_count = int(deck_width/girder_combo) + 1
-
-    #Crossbeam parameters input, use default if not provided
+    # Crossbeam parameters input, use default if not provided
     crossbeam_width = float(params.get("crossbeam_width",0.25))
     crossbeam_depth = float(params.get("crossbeam_depth",0.6))
-    crossbeam_spacing = float(params.get("crossbeam_spacing",4))
+    crossbeam_count = int(params.get("crossbeam_count", 6))
+
+    # Barrier parameters input, use default if not provided
+    barrier_height = float(params.get("barrier_height", 1.2))
+    barrier_thickness = float(params.get("barrier_thickness", 0.2))
+    barrier_offset = float(params.get("barrier_offset", 0.1))
 
     #2).CREATE A NEW IFC FILE
-    # #IFC4X3is where IfcBridge/IfcBridgePart are standard
+    # IFC4X3 is the only IFC version that have IfcBridge/IfcBridgePart
     model = run("project.create_file", version = "IFC4X3")
     #Every model needs exactly one IfcProject
     project = run("root.create_entity", model, ifc_class = "IfcProject", name = "Demo Project")
 
-    #Assign metric unit
+    # Assign metric unit
     run(
         "unit.assign_unit",
         model,
@@ -51,8 +55,13 @@ def main(params: dict) -> str:
         },
     )
 
-    #3). Geometry context: so we can store 3D shape
+    #3). Define geometric representation contexts for storing 3D model geometry
+
+    # Create the  main model context
     context = run("context.add_context", model, context_type="Model")
+
+    # Create the body context to store detail
+    # This is used to store the physical 3D shape representation of bridge elements
     body = run(
         "context.add_context",
         model,
@@ -64,18 +73,19 @@ def main(params: dict) -> str:
 
     #4). Spatial structure: project -> site -> bridge
 
-
+    # Create site and bridge entities
     site = run( "root.create_entity", model, ifc_class = "IfcSite", name ="site" )
     bridge = run( "root.create_entity", model, ifc_class = "IfcBridge", name = BRIDGE_NAME )
 
-    #Arrange them in hierachy
+    # Arrange them in hierachy, project contains site, and site contains bridge
     run("aggregate.assign_object", model, relating_object = project, products = [site])
     run("aggregate.assign_object", model, relating_object = site, products = [bridge])
 
     #5). Functions set up
 
-    #Object placement function:
+    # Object placement function:
     def place(product, matrix):
+        # Use the built-in object placement function within the 'model', place selected 'product' in pre-defined 'matrix'
         run("geometry.edit_object_placement", model, product = product, matrix = matrix)
 
     # Place the bridge at the global origin
@@ -86,8 +96,10 @@ def main(params: dict) -> str:
         [0,0,0, 1],
     ]) 
 
-    #create rectangles for column/volumn
+    # Create rectangles for column/volumn
     def make_rect_profile(profile_name, xdim, ydim):
+
+        # Use the built-in rectangle creation function to create rectangular profile and define each parameters using the values provided
         return model.create_entity(
             "IfcRectangleProfileDef",
             ProfileType = "AREA",
@@ -96,8 +108,10 @@ def main(params: dict) -> str:
             YDim = float(ydim),
         )
 
-    #volumize rectangles
+    # Generate 3D geometry by extruding a 2D profile and assign it to the element
     def assign_extrusion(product, profile, depth):
+
+        # Create a 3D representation by extruding the given 2D profile along its local axis
         repr_ = run(
             "geometry.add_profile_representation",
             model,
@@ -105,17 +119,15 @@ def main(params: dict) -> str:
             profile = profile,
             depth = float(depth),
         )
+
+        # Assign the generated geometric representation to the IFC element
         run("geometry.assign_representation", model, product = product, representation = repr_ )
+
         return repr_
 
-    def make_block_proxy(name, xdim, ydim, zdim, placement_matrix):
-        p = run("root.create_entity", model, ifc_class = "IfcBuildingElementProxy", name = name)
-        place(p, placement_matrix)
-        prof = make_rect_profile(f"{name}_profile", xdim, ydim)
-        assign_extrusion(p, prof, zdim)
-        return p
-
     #6). Create the deck as a slab (rectangular footprint extruded by thickness)
+
+    # Create bridge entity and define it as IfcSlab
     deck = run(
         "root.create_entity", 
         model,
@@ -124,15 +136,16 @@ def main(params: dict) -> str:
         predefined_type = "FLOOR"
     )
 
+    # Call placement function to place the bridge deck
     place(deck,[
-        [1,0,0,0.0],      #x-axis + x translation
-        [0,1,0,0.0],      #y-axis + y translation
-        [0,0,1,deck_height_above_ground],   #z-axis + z translation
+        [1,0,0,0.0],      # x-axis + x translation
+        [0,1,0,0.0],      # y-axis + y translation
+        [0,0,1,deck_height_above_ground],   # z-axis + z translation
         [0,0,0,1],    
     ])      
 
-    #Slab footprint parameter is in the slab's LOCAL XY-plane
-    #Define a rectangle going around and returning to the start point:
+    # Slab footprint parameter is in the slab's LOCAL XY-plane
+    # Define a rectangle going around and returning to the start point:
     deck_polyline = [
         (0.0, 0.0),
         (deck_length, 0.0),
@@ -141,6 +154,7 @@ def main(params: dict) -> str:
         (0.0,0.0),
     ]
 
+    # Create 3D geometry for bridge deck using its profile and deck thickness
     deck_repr = run("geometry.add_slab_representation",
                     model,
                     context = body,
@@ -148,128 +162,222 @@ def main(params: dict) -> str:
                     polyline = deck_polyline,
     )
 
-    #Assigning actual representation to the deck
+    # Assigning actual representation to the deck
     run("geometry.assign_representation", model, product = deck, representation = deck_repr)
-    #Put the deck inside the bridge(spatial containment)
+
+    # Put the deck inside the bridge(spatial containment)
     run("spatial.assign_container", model, relating_structure = bridge, products=[deck])
 
 
     #7). Make girders
+
+    # Call rectangular profile creation function to create profile for girder
     girder_profile = make_rect_profile("Girder_Profile", girder_width, girder_depth)  
 
+    # Create a function to make girders
     def make_girder(name:str, y_centre: float):
+        # Create entity for beam(girder)
         beam = run("root.create_entity", model, ifc_class = "IfcBeam", name = name)
+
+        # Z-position equals to the deck elevation from ground minus half of the girder depth as IFC places object from its centre
         z_under_deck = deck_height_above_ground - girder_depth/2
 
+        # Call placement function to place girders
+        # The local axes are rotated so the girder extrusion runs along the bridge length,
+        # while the translation terms place it across the deck width and below the deck
         place(beam, [
-            [0,0,1,0.0],            #rotation
-            [1,0,0,y_centre],       #move sideways
-            [0,1,0,z_under_deck],   #move up
+            [0,0,1,0.0],           # local X aligned with global Z
+            [1,0,0,y_centre],      # local Y aligned with global X (positions girder across deck width)
+            [0,1,0,z_under_deck],  # local Z aligned with global Y (sets elevation below deck)
             [0,0,0,1],
         ])
 
+        # Create 3D geometry from the girder profile and deck length
         assign_extrusion(beam, girder_profile, deck_length)
 
+        # Relating girder to the bridge
         run("spatial.assign_container", model, relating_structure = bridge, products = [beam])
-    
+        
         return beam
-
-    #Place girders across the deck width equally
-    #Place the first girder in the middle
-    girder_ys = []
-    if girder_count == 1:
-        girder_ys = [deck_width/2.0]
-
-    # Put the first girder at one side, leaving half girder width as edge offset
-    else:
-        first_y= girder_width / 2.0
-
-    # Add girders using the user-provided spacing
-    current_y = first_y
-
-    # Keep append girder y position as long as girder position is still inside the bridge
-    while current_y <= deck_width - girder_width / 2.0 + 1e-9:
-        girder_ys.append(current_y)
-        current_y += girder_spacing
     
-    # Create girders using the y position list
+    # Create an empty list to store the y-positions of the girders
+    girder_ys = []
+
+    # If there is only one girder, place it at the centre of the deck width
+    if girder_count <= 1:
+        girder_ys = [deck_width / 2.0]
+
+    # Otherwise, place the first and last girders aligned with the deck edges in the y-direction
+    else:
+        # IFC places the girder using its centre point, so half the girder width is used
+        # to align the outer face of the girder with the deck edge
+        first_y = girder_width / 2.0
+        last_y = deck_width - girder_width / 2.0
+
+        # Calculate the centre-to-centre spacing by dividing the distance between
+        # the two outermost girders by the number of intervals (girder_count - 1)
+        girder_spacing = (last_y - first_y) / (girder_count - 1)
+
+        # Append the y-position of each girder to the list using the calculated spacing
+        for i in range(girder_count):
+            girder_ys.append(first_y + i * girder_spacing)
+
+    # Create girders using the calculated y-positions
     for i, gy in enumerate(girder_ys, start=1):
         make_girder(f"Girder_{i}", gy)
 
 
-    #8. Piers
+    #8). Piers
+
+    # create a function to make piers
     def make_pier(name: str, x: float, y: float):
+
+        # Create entity for pier, defined as IfcColumn
         pier = run("root.create_entity", model, ifc_class = "IfcColumn", name = name)
 
         #Place the pier so its local origin is at (x, y, 0)
         place(pier, [
-            [1,0,0,x],    # ← arg 2
-            [0,1,0,y],    # ← arg 3
-            [0,0,1,0.0],  # ← arg 4
+            [1,0,0,x],   
+            [0,1,0,y],    
+            [0,0,1,0.0], 
             [0,0,0,1],
         ])
 
         # Create a rectangle profile and set its size
         prof = make_rect_profile(f"{name}_Profile", pier_width, pier_depth)
 
-        # Extrude that profile by pier_height and assign the 3D representation to the tag
+        # Create 3D geometry using profile and pier_height
         assign_extrusion(pier, prof, pier_height)
 
-        #Relating pier to the bridge
+        # Relating pier to the bridge
         run("spatial.assign_container", model, relating_structure= bridge, products = [pier])
+
         return pier
     
-    start_x = pier_edge_clear
-    end_x = deck_length - pier_edge_clear
-
+    # Store the x-positions of the piers
     pier_xs = []
-    if end_x <= start_x: #deck to short -> put at least 1 pier in the middle
-        pier_xs = [deck_length/2.0]
 
+    # Define the first and last pier positions based on edge clearance
+    first_x = pier_edge_clear
+    last_x = deck_length - pier_edge_clear
+
+    # If only one pier is required, place it at the centre of the deck length
+    if pier_count <= 1:
+        pier_xs = [deck_length / 2.0]
+
+    # If the available span is too short, also place one pier at the centre
+    elif last_x <= first_x:
+        pier_xs = [deck_length / 2.0]
+
+    # Otherwise, distribute the piers evenly between the two edge clearances
     else:
-        x = start_x
-        while x <= end_x + 1e-9 :
-            pier_xs.append(x)
-            x += pier_spacing
+        pier_spacing = (last_x - first_x) / (pier_count - 1)
 
-    for idx, px in enumerate (pier_xs, start = 1):
-        make_pier(f"Pier_{idx}", px, pier_y)
+        for i in range(pier_count):
+            pier_xs.append(first_x + i * pier_spacing)
+
+    # Create piers at the calculated x-positions
+    for i, px in enumerate(pier_xs, start=1):
+        make_pier(f"Pier_{i}", px, pier_y)
 
 
     #9). Cross beams (IfcBeam running across width)
 
+    # Create a function to make crossbeam
     def make_crossbeam(name, x_pos):
+
+        # Create entity for beam(crossbeam)
         beam = run("root.create_entity", model, ifc_class = "IfcBeam", name = name)
-        #polyline-profile
+
+        # Create 2D profile for crossbeam
         crossbeam_profile = make_rect_profile(f"{name}_Profile", crossbeam_width, crossbeam_depth)
 
+        # Z-position equals to the elevation of deck above ground minus half of crossbeam depth, note IFC place an object from its centre
         z_under_deck = deck_height_above_ground - crossbeam_depth/2
 
+        # Call placement function to place crossbeam
+        # The local axes are rotated so the crossbeam extrusion runs across the deck width,
+        # while the translation terms place it along the bridge length and below the deck
         place(beam, [
-            [1,0,0, x_pos],         # local X -> global X (translation in X is straightforward here)
-            [0,0,1,0],             # local Y -> global Z
-            [0,1,0,z_under_deck],  # local Z -> global Y
+            [1,0,0, x_pos],        # local X -> global X, position crossbeam across deck length
+            [0,0,1,0],             # local Y -> global Z, rotates crossbeam orientation 
+            [0,1,0,z_under_deck],  # local Z -> global Y, sets elevation below deck
             [0,0,0,1],
         ])
     
-        #extrusion
+        # Create 3D geomtry using the crossbeam profile created and deck width
         assign_extrusion(beam, crossbeam_profile, deck_width)
+
+        # Relating crossbeam to bridge
         run("spatial.assign_container", model, relating_structure = bridge, products = [beam])
         
         return beam
+    
+    # Store the x-positions of the crossbeams
+    crossbeam_xs = []
 
-    start_x = crossbeam_width/2
-    end_x = deck_length - crossbeam_width/2
+    # If only one crossbeam is required, place it at the centre of the deck length
+    if crossbeam_count <= 1:
+        crossbeam_xs = [deck_length / 2.0]
 
-    x = start_x
-    idx = 1
-    #Use while loop to keep on adding crossbeam until reachs end_x
-    while x <= end_x:
-        make_crossbeam(f"CrossBeam_{idx}", x)
-        x += crossbeam_spacing
-        idx += 1
+    # Otherwise, distribute the crossbeams evenly along the deck length
+    else:
+        # Use half the crossbeam width so the outer crossbeams align with both deck ends
+        first_x = crossbeam_width / 2.0
+        last_x = deck_length - crossbeam_width / 2.0
 
-    #10). Save the model
+        # Compute the centre-to-centre spacing between crossbeams
+        crossbeam_spacing = (last_x - first_x) / (crossbeam_count - 1)
+
+        # Generate x-positions for all crossbeams
+        for i in range(crossbeam_count):
+            crossbeam_xs.append(first_x + i * crossbeam_spacing)
+
+    # Create crossbeams at the calculated x-positions
+    for i, cx in enumerate(crossbeam_xs, start=1):
+        make_crossbeam(f"CrossBeam_{i}", cx)
+
+    #10). Bridge side barriers 
+
+    # Create a function to make barriers
+    def make_barrier(name: str, y_pos: float):
+
+        # Create entity for beam(barrier)
+        barrier = run("root.create_entity", model, ifc_class="IfcBeam", name=name)
+
+        z_pos = deck_height_above_ground + deck_thickness + barrier_height/2
+
+       # The local axes are rotated so the barrier extrusion runs along the bridge length,
+       # while the translation terms place it across the deck width and above the deck surface
+        place(barrier, [
+            [0,0,1,0.0],        # local X -> global Z, rotates barrier to align along bridge length
+            [1,0,0,y_pos],      # local Y -> global X, positions barrier across deck width
+            [0,1,0,z_pos],      # local Z -> global Y, sets elevation above deck surface
+            [0,0,0,1],
+        ])
+
+        # Create rectangular profile using barrier thickness and height
+        barrier_profile = make_rect_profile(f"{name}_Profile", barrier_thickness, barrier_height)
+
+        # Create 3D geomtry using barrier profile and deck length
+        assign_extrusion(barrier, barrier_profile, deck_length)
+
+        # Relate barrier to the bridge
+        run("spatial.assign_container", model, relating_structure=bridge, products=[barrier])
+
+        return barrier
+
+    # Set the left and right position for the two barrier using offsets
+    left_barrier_y = barrier_offset + barrier_thickness/2
+    right_barrier_y = deck_width - (barrier_offset + barrier_thickness/2)
+
+    # Call make barrier function to create two barriers
+    make_barrier("Left_Barrier", left_barrier_y)
+    make_barrier("Right_Barrier", right_barrier_y)
+
+
+    #11). Save the model
+    # Write the model into the OUT_PATH IFC file
     model.write(OUT_PATH)
     return OUT_PATH
 
