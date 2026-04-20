@@ -19,16 +19,16 @@ class BridgeParams(BaseModel):
 
     pier_width: float = 2
     pier_depth: float = 2
-    pier_count: int = 3
+    pier_number: int = 3
     pier_edge_clear: float = 5.0
 
     girder_width: float = 0.35
     girder_depth: float = 1.5
-    girder_count: int = 5
+    girder_number: int = 5
 
     crossbeam_width: float = 0.25
     crossbeam_depth: float = 0.6
-    crossbeam_count: int = 6
+    crossbeam_number: int = 6
 
     barrier_height: float = 1.2
     barrier_thickness: float = 0.2

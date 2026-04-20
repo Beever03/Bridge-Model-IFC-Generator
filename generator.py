@@ -21,18 +21,18 @@ def main(params: dict) -> str:
     pier_y = deck_width/2.0 #Place pier in the middle of the deck width
 
     # Pier locations along the deck
-    pier_count = int(params.get("pier_count", 3))
+    pier_number = int(params.get("pier_number", 3))
     pier_edge_clear = float(params.get("pier_edge_clear", 5)) #5 meters off from the edge
 
     # Girder parameters input, use default if not provided
     girder_width = float(params.get("girder_width", 0.35))
     girder_depth = float(params.get("girder_depth", 1.5))
-    girder_count = int(params.get("girder_count", 5))
+    girder_number = int(params.get("girder_number", 5))
 
     # Crossbeam parameters input, use default if not provided
     crossbeam_width = float(params.get("crossbeam_width",0.25))
     crossbeam_depth = float(params.get("crossbeam_depth",0.6))
-    crossbeam_count = int(params.get("crossbeam_count", 6))
+    crossbeam_number = int(params.get("crossbeam_number", 6))
 
     # Barrier parameters input, use default if not provided
     barrier_height = float(params.get("barrier_height", 1.2))
@@ -204,7 +204,7 @@ def main(params: dict) -> str:
     girder_ys = []
 
     # If there is only one girder, place it at the centre of the deck width
-    if girder_count <= 1:
+    if girder_number <= 1:
         girder_ys = [deck_width / 2.0]
 
     # Otherwise, place the first and last girders aligned with the deck edges in the y-direction
@@ -215,11 +215,11 @@ def main(params: dict) -> str:
         last_y = deck_width - girder_width / 2.0
 
         # Calculate the centre-to-centre spacing by dividing the distance between
-        # the two outermost girders by the number of intervals (girder_count - 1)
-        girder_spacing = (last_y - first_y) / (girder_count - 1)
+        # the two outermost girders by the number of intervals (girder_number - 1)
+        girder_spacing = (last_y - first_y) / (girder_number - 1)
 
         # Append the y-position of each girder to the list using the calculated spacing
-        for i in range(girder_count):
+        for i in range(girder_number):
             girder_ys.append(first_y + i * girder_spacing)
 
     # Create girders using the calculated y-positions
@@ -262,7 +262,7 @@ def main(params: dict) -> str:
     last_x = deck_length - pier_edge_clear
 
     # If only one pier is required, place it at the centre of the deck length
-    if pier_count <= 1:
+    if pier_number <= 1:
         pier_xs = [deck_length / 2.0]
 
     # If the available span is too short, also place one pier at the centre
@@ -271,9 +271,9 @@ def main(params: dict) -> str:
 
     # Otherwise, distribute the piers evenly between the two edge clearances
     else:
-        pier_spacing = (last_x - first_x) / (pier_count - 1)
+        pier_spacing = (last_x - first_x) / (pier_number - 1)
 
-        for i in range(pier_count):
+        for i in range(pier_number):
             pier_xs.append(first_x + i * pier_spacing)
 
     # Create piers at the calculated x-positions
@@ -317,7 +317,7 @@ def main(params: dict) -> str:
     crossbeam_xs = []
 
     # If only one crossbeam is required, place it at the centre of the deck length
-    if crossbeam_count <= 1:
+    if crossbeam_number <= 1:
         crossbeam_xs = [deck_length / 2.0]
 
     # Otherwise, distribute the crossbeams evenly along the deck length
@@ -327,10 +327,10 @@ def main(params: dict) -> str:
         last_x = deck_length - crossbeam_width / 2.0
 
         # Compute the centre-to-centre spacing between crossbeams
-        crossbeam_spacing = (last_x - first_x) / (crossbeam_count - 1)
+        crossbeam_spacing = (last_x - first_x) / (crossbeam_number - 1)
 
         # Generate x-positions for all crossbeams
-        for i in range(crossbeam_count):
+        for i in range(crossbeam_number):
             crossbeam_xs.append(first_x + i * crossbeam_spacing)
 
     # Create crossbeams at the calculated x-positions
